@@ -1,0 +1,145 @@
+clc;clear;
+rng('shuffle');
+rngSeed = randperm(10000,100);
+S = struct();
+sampleSize = 2;   % number of layouts
+majorToMinorRatio = 3;
+minReadMegabyte=3;
+maxReadMegabyte=30;
+minWriteMegabyte=1;
+maxWriteMegabyte=6;
+pMoreWrite=0.5;
+bTri = 0; % the tri points is appended at the end of all users' info array
+bTriDistance = 3;
+numberOfUsers = 8;
+minVisitedLocations = 2;
+maxVisitedLocations = 6;
+quota = 1;
+
+for ii=1:sampleSize
+    rng(rngSeed(ii));
+    BoneNodeSize = 10;
+    BoneEdgeSize = 12;
+    ApNodeSize = 60;        % number of base stations
+    StorageNodeSize = 40;
+    LocationScale = 600;
+    LocationSize = 30;      % the number of locations, we want to generate
+    LocationDist = 15;      % min distance between any a pair of locations
+    %LocationDist = 3;
+    UserLocationCounts = 3; % the number of locations we pick from total generated locations
+    UserLocationMinDist = 1%floor(LocationScale/(UserLocationCounts+1)); the picked locations should qualify the constraint, i.e., greater than 230
+    UserLocationMaxDist = 3000%1000;   the picked locations should qualify the constraint, i.e., no greater than 3000
+    Test = 1;
+    %minPrRead1 = 0.58;
+    %maxPrRead1 = 0.82;
+    minPrRead1 = 0.7;
+    maxPrRead1 = 0.9;
+    %minPrRead2 = 0.2;
+    %maxPrRead2 = 0.5;
+    minPrRead2 = 0.1;
+    maxPrRead2 = 0.3;
+    
+    [BoneA,BoneC, ApA, ApC, SA, SC, LA, UI, UA, UAvg, FA, FC] = CreateLayout(BoneNodeSize, ...
+        BoneEdgeSize, ApNodeSize, StorageNodeSize, LocationScale,LocationSize, LocationDist, Test, ...
+        UserLocationCounts, UserLocationMinDist, UserLocationMaxDist, bTri, bTriDistance);
+    
+    %PlotNetwork(BoneA,BoneC, ApA, ApC, SA, SC, LA, FC);
+    %
+    StorageBegin = BoneNodeSize+ApNodeSize+1;
+    StorageEnd = BoneNodeSize + ApNodeSize + StorageNodeSize;
+    LocationBegin = StorageEnd + 1;
+    LocationEnd = StorageEnd + LocationSize;
+    speed = GenerateSpeedMatrix(FA, FC, StorageBegin, StorageEnd, LocationBegin, LocationEnd, 0);
+    speed =speed';
+        
+    S(ii).index=ii;
+    S(ii).quota = quota;
+    S(ii).seed = rngSeed(ii);
+    S(ii).BoneA = BoneA;
+    S(ii).BoneC = BoneC;
+    S(ii).ApA = ApA;
+    S(ii).ApC = ApC;
+    S(ii).SA = SA;
+    S(ii).SC = SC;
+    S(ii).LA = LA;
+    S(ii).FA = FA;
+    S(ii).FC = FC;
+    S(ii).speedM = speed;
+    S(ii).BoneNodeSize = BoneNodeSize;
+    S(ii).BoneEdgeSize = BoneEdgeSize;
+    S(ii).ApNodeSize = ApNodeSize;
+    S(ii).StorageNodeSize = StorageNodeSize;
+    S(ii).LocationScale = LocationScale;    
+    S(ii).LocationSize = LocationSize;
+    S(ii).StorageBegin = StorageBegin;
+    S(ii).StorageEnd = StorageEnd;
+    S(ii).LocationBegin = LocationBegin;
+    S(ii).LocationEnd = LocationEnd;
+   
+    S(ii).UserLocationCounts = UserLocationCounts;
+    
+    S(ii).UI = UI;
+    S(ii).UA = UA;
+    S(ii).UAvg = UAvg;
+    
+    % add user patter for differnt number of locations 2~6
+    UserPattern = struct();
+    
+   
+    % generate random users and random locations for each user
+    % we assume each user has random visited locations between 2 to 6
+    S(ii).NumberOfUsers = numberOfUsers;
+    S(ii).MinVisitedLocationsSize = minVisitedLocations;
+    S(ii).MaxVisitedLocationsSize = maxVisitedLocations;
+    
+    seqNum = maxVisitedLocations - minVisitedLocations + 1;
+    
+     
+    
+    
+    
+    for i=1:numberOfUsers
+        if i <= seqNum
+            NumberOfLocForOneUser = minVisitedLocations - 1 + i;
+        else
+            NumberOfLocForOneUser = minVisitedLocations - 1 + randi(maxVisitedLocations-minVisitedLocations+1);
+        end
+        
+        patternM = RandomPattern(NumberOfLocForOneUser, minPrRead1, maxPrRead1, ...
+        minPrRead2, maxPrRead2, majorToMinorRatio, minReadMegabyte, ...
+        maxReadMegabyte, minWriteMegabyte, maxWriteMegabyte, pMoreWrite);
+        UserPattern(i).UserLocationCounts = NumberOfLocForOneUser;
+        UserPattern(i).UserLocationPr = patternM(1,:);
+        UserPattern(i).UserReadPr = patternM(2,:);
+        UserPattern(i).UserUpdatePr = patternM(3,:);
+        UserPattern(i).UserLocationIndex = randperm(LocationSize, NumberOfLocForOneUser);
+        UserPattern(i).UserReadMegabytesPerOp = patternM(4,:);
+        UserPattern(i).UserWriteMegabytesPerOp = patternM(5,:);
+    end    
+    
+    S(ii).bTri = bTri;   
+   
+    if bTri == 1
+        i = numberOfUsers+1;
+        patternM = RandomPattern(3, minPrRead1, maxPrRead1, ...
+            minPrRead2, maxPrRead2, majorToMinorRatio, minReadMegabyte, ...
+            maxReadMegabyte, minWriteMegabyte, maxWriteMegabyte, pMoreWrite);
+        
+        UserPattern(i).UserLocationCounts = 3;
+        UserPattern(i).UserLocationPr = patternM(1,:);
+        UserPattern(i).UserReadPr = patternM(2,:);
+        UserPattern(i).UserUpdatePr = patternM(3,:);
+        UserPattern(i).UserLocationIndex = UI-LocationBegin+1;
+        UserPattern(i).UserReadMegabytesPerOp = patternM(4,:);
+        UserPattern(i).UserWriteMegabytesPerOp = patternM(5,:);
+    end
+    
+    S(ii).ULocPattern = UserPattern;
+    fprintf('Progress: %d\n',ii);
+end
+filenamePrefix = sprintf('multiNetworkT%d_S%d_L%d_U%d', sampleSize, StorageNodeSize, LocationSize, numberOfUsers);
+matFileName = sprintf('%s.mat',filenamePrefix);
+jsonFileName = sprintf('%s.txt',filenamePrefix);
+save(matFileName,'S');
+S=rmfield(S,{'BoneA','BoneC','ApA','ApC','SA','SC','LA','FA','UserLocationCounts','UI','UA','UAvg'});
+savejson('',S,jsonFileName);
